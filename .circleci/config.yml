@@ -162,6 +162,9 @@ jobs:
       IS_RELEASE: << pipeline.parameters.is_release >>
     steps:
       - attach
+      - run:
+          name: Install AWS CLI prerequisites
+          command: apt-get update && apt-get install -y --no-install-recommends curl unzip
       - aws-auth
       - install-cypress-binary
       - split-specs
