@@ -33,6 +33,11 @@ commands:
       - checkout
       - attach_workspace:
           at: .
+  aws-auth:
+    steps:
+      - aws-cli/setup:
+          role_arn: ${AWS_ROLE_ARN}
+          region: eu-west-1
   install-cypress-binary:
     steps:
       - restore_cache:
@@ -117,6 +122,7 @@ jobs:
         enum: [staging, production]
     steps:
       - attach
+      - aws-auth
       - run: scripts/ci/preview.sh << parameters.env >>
 
   deploy:
@@ -127,6 +133,7 @@ jobs:
         enum: [staging, production]
     steps:
       - attach
+      - aws-auth
       - run: scripts/ci/deploy.sh << parameters.env >>
 
   e2e-gate:
@@ -155,7 +162,7 @@ jobs:
       IS_RELEASE: << pipeline.parameters.is_release >>
     steps:
       - attach
-      - aws-cli/setup
+      - aws-auth
       - install-cypress-binary
       - split-specs
       - run:
