@@ -14,10 +14,15 @@ timeout_seconds="${E2E_TIMEOUT_SECONDS:-3600}"
 body="$(jq -n --arg branch "$branch" --arg env "$env_name" --argjson release "$is_release" \
   '{branch: $branch, parameters: {run_e2e: true, e2e_target_environment: $env, is_release: $release}}')"
 
-pipeline_id="$(curl -fsS -X POST "$api/project/$slug/pipeline" \
+pipeline="$(curl -fsS -X POST "$api/project/$slug/pipeline" \
   -H "Circle-Token: $token" -H "Content-Type: application/json" \
-  -d "$body" | jq -r '.id')"
+  -d "$body")"
+pipeline_id="$(jq -r '.id' <<<"$pipeline")"
+pipeline_number="$(jq -r '.number' <<<"$pipeline")"
+# The web app spells VCS prefixes out in full; API slugs abbreviate them.
+ui_slug="$(sed -e 's#^gh/#github/#' -e 's#^bb/#bitbucket/#' <<<"$slug")"
 echo "Triggered pipeline $pipeline_id (uat, $env_name)"
+echo "Follow it at https://app.circleci.com/pipelines/$ui_slug/$pipeline_number"
 
 deadline=$(( $(date +%s) + timeout_seconds ))
 while (( $(date +%s) < deadline )); do
