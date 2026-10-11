@@ -1,0 +1,14 @@
+{
+  "no-unnamed-features": "on",
+  "no-unnamed-scenarios": "on",
+  "no-dupe-feature-names": "on",
+  "no-dupe-scenario-names": ["on", "in-feature"],
+  "no-empty-file": "on",
+  "no-files-without-scenarios": "on",
+  "no-trailing-spaces": "on",
+  "no-multiple-empty-lines": "on",
+  "no-duplicate-tags": "on",
+  "allowed-tags": ["on", { "tags": ["@uat"] }],
+  "indentation": ["on", { "Feature": 0, "Scenario": 2, "Step": 4 }],
+  "name-length": ["on", { "Feature": 80, "Scenario": 80, "Step": 80 }]
+}

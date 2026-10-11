@@ -1,0 +1,237 @@
+version: 2.1
+
+orbs:
+  aws-cli: circleci/aws-cli@5.4.2
+
+parameters:
+  run_e2e:
+    type: boolean
+    default: false
+  e2e_target_environment:
+    type: enum
+    enum: [staging, production]
+    default: staging
+  is_release:
+    type: boolean
+    default: false
+
+executors:
+  node:
+    docker:
+      - image: cimg/node:24.21
+    resource_class: medium
+  cypress:
+    docker:
+      - image: cypress/browsers:node-24.21.0-chrome-153.0.8010.36-1-ff-156.0-edge-153.0.4234.32-1
+    resource_class: medium
+    environment:
+      CYPRESS_BROWSER: chrome
+
+commands:
+  attach:
+    steps:
+      - checkout
+      - attach_workspace:
+          at: .
+  install-cypress-binary:
+    steps:
+      - restore_cache:
+          keys:
+            - cypress-binary-v1-{{ checksum "yarn.lock" }}
+      - run: npx cypress install
+      - save_cache:
+          key: cypress-binary-v1-{{ checksum "yarn.lock" }}
+          paths:
+            - ~/.cache/Cypress
+  split-specs:
+    description: Exports SPECS with this container's share of the feature files.
+    steps:
+      - run:
+          name: Split specs
+          command: |
+            SPECS=$(circleci tests glob "cypress/e2e/**/*.feature" | circleci tests split | paste -sd, -)
+            echo "export SPECS='$SPECS'" >> "$BASH_ENV"
+            echo "This container runs: ${SPECS:-<none>}"
+  store-cypress-output:
+    steps:
+      - store_test_results:
+          path: cypress/results
+      - store_artifacts:
+          path: cypress/results
+      - store_artifacts:
+          path: cypress/videos
+      - store_artifacts:
+          path: cypress/screenshots
+
+jobs:
+  install:
+    executor: node
+    environment:
+      CYPRESS_INSTALL_BINARY: "0"
+    steps:
+      - checkout
+      - restore_cache:
+          keys:
+            - yarn-v1-{{ checksum "yarn.lock" }}
+      - run: yarn install --frozen-lockfile
+      - save_cache:
+          key: yarn-v1-{{ checksum "yarn.lock" }}
+          paths:
+            - ~/.cache/yarn
+      - persist_to_workspace:
+          root: .
+          paths:
+            - node_modules
+
+  check:
+    executor: node
+    steps:
+      - attach
+      - run: yarn lint
+      - run: yarn typecheck
+
+  build:
+    executor: node
+    environment:
+      BUILD_NUMBER: << pipeline.number >>
+    steps:
+      - attach
+      - run: scripts/ci/build.sh staging
+      - run: scripts/ci/build.sh production
+      - persist_to_workspace:
+          root: .
+          paths:
+            - dist
+
+  infra-check:
+    executor: node
+    steps:
+      - attach
+      - run: npx cdk synth --quiet
+
+  preview:
+    executor: node
+    parameters:
+      env:
+        type: enum
+        enum: [staging, production]
+    steps:
+      - attach
+      - run: scripts/ci/preview.sh << parameters.env >>
+
+  deploy:
+    executor: node
+    parameters:
+      env:
+        type: enum
+        enum: [staging, production]
+    steps:
+      - attach
+      - run: scripts/ci/deploy.sh << parameters.env >>
+
+  e2e-gate:
+    executor: node
+    parameters:
+      env:
+        type: enum
+        enum: [staging, production]
+    environment:
+      CIRCLE_PROJECT_SLUG: << pipeline.project.slug >>
+    steps:
+      - checkout
+      - run:
+          name: Trigger uat pipeline and wait for it
+          command: scripts/circleci/trigger-and-wait.sh << parameters.env >> << pipeline.parameters.is_release >>
+          no_output_timeout: 65m
+
+  uat:
+    executor: cypress
+    parallelism: 3
+    parameters:
+      env:
+        type: enum
+        enum: [staging, production]
+    environment:
+      IS_RELEASE: << pipeline.parameters.is_release >>
+    steps:
+      - attach
+      - aws-cli/setup
+      - install-cypress-binary
+      - split-specs
+      - run:
+          name: Cypress UAT against << parameters.env >>
+          command: |
+            if [ -z "$SPECS" ]; then echo "No specs assigned to this container"; exit 0; fi
+            scripts/ci/run-uat.sh << parameters.env >> "$SPECS"
+      - run:
+          name: Upload evidence to S3
+          when: always
+          command: |
+            PIPELINE_ID=<< pipeline.id >> SHARD_INDEX=$CIRCLE_NODE_INDEX \
+              scripts/ci/upload-evidence.sh << parameters.env >>
+      - store-cypress-output
+
+workflows:
+  build-and-deploy:
+    when:
+      and:
+        - not: << pipeline.parameters.run_e2e >>
+        - not:
+            matches: { pattern: "^uat/.+$", value: << pipeline.git.branch >> }
+    jobs:
+      - install
+      - check:
+          requires: [install]
+      - build:
+          requires: [install]
+      - infra-check:
+          requires: [build]
+      - preview:
+          name: preview-staging
+          env: staging
+          context: tictactoe-aws
+          requires: [build]
+      - deploy:
+          name: deploy-staging
+          env: staging
+          context: tictactoe-aws
+          serial-group: << pipeline.project.slug >>/deploy-staging
+          requires: [check, infra-check, preview-staging]
+          filters: { branches: { only: main } }
+      - e2e-gate:
+          name: e2e-staging
+          env: staging
+          context: circle-token
+          requires: [deploy-staging]
+      - preview:
+          name: preview-production
+          env: production
+          context: tictactoe-aws
+          requires: [deploy-staging]
+      - approve-production:
+          type: approval
+          requires: [e2e-staging, preview-production]
+      - deploy:
+          name: deploy-production
+          env: production
+          context: tictactoe-aws
+          serial-group: << pipeline.project.slug >>/deploy-production
+          requires: [approve-production]
+      - e2e-gate:
+          name: e2e-production
+          env: production
+          context: circle-token
+          requires: [deploy-production]
+
+  uat:
+    when:
+      or:
+        - << pipeline.parameters.run_e2e >>
+        - matches: { pattern: "^uat/.+$", value: << pipeline.git.branch >> }
+    jobs:
+      - install
+      - uat:
+          env: << pipeline.parameters.e2e_target_environment >>
+          context: tictactoe-aws
+          serial-group: << pipeline.project.slug >>/uat-<< pipeline.parameters.e2e_target_environment >>
+          requires: [install]

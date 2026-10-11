@@ -1,0 +1,10 @@
+node_modules/
+dist/
+cdk.out/
+cypress/results/
+cypress/videos/
+cypress/screenshots/
+cypress/downloads/
+.DS_Store
+docs/
+*.log

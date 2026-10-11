@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="build-version" content="__BUILD_VERSION__">
+    <title>Tic-Tac-Toe</title>
+    <style>
+      :root {
+        --bg: #f6f7f9;
+        --fg: #1d2330;
+        --cell: #ffffff;
+        --border: #c9cfd8;
+        --accent: #3b5bdb;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 16px;
+        padding: 16px;
+        font-family: system-ui, sans-serif;
+        background: var(--bg);
+        color: var(--fg);
+      }
+      h1 {
+        margin: 0;
+        font-size: 1.5rem;
+      }
+      .env {
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        padding: 2px 8px;
+        border-radius: 4px;
+        background: var(--accent);
+        color: #ffffff;
+      }
+      .board {
+        display: grid;
+        grid-template-columns: repeat(3, 80px);
+        grid-template-rows: repeat(3, 80px);
+        gap: 6px;
+      }
+      .cell {
+        font-size: 2rem;
+        font-weight: 600;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: var(--cell);
+        color: var(--fg);
+        cursor: pointer;
+      }
+      .cell:disabled {
+        cursor: default;
+      }
+      .status {
+        min-height: 1.5em;
+        font-size: 1.125rem;
+      }
+      .version {
+        margin: 0;
+        font-family: ui-monospace, monospace;
+        font-size: 0.75rem;
+        color: #5c6573;
+      }
+      .reset {
+        padding: 8px 16px;
+        font-size: 1rem;
+        border: 1px solid var(--accent);
+        border-radius: 6px;
+        background: transparent;
+        color: var(--accent);
+        cursor: pointer;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Tic-Tac-Toe</h1>
+    <span class="env" data-testid="env-banner">__ENV_NAME__</span>
+    <div class="board" data-testid="board">
+      <button
+        type="button"
+        class="cell"
+        data-testid="cell-0"
+        aria-label="cell 1"
+      ></button>
+      <button
+        type="button"
+        class="cell"
+        data-testid="cell-1"
+        aria-label="cell 2"
+      ></button>
+      <button
+        type="button"
+        class="cell"
+        data-testid="cell-2"
+        aria-label="cell 3"
+      ></button>
+      <button
+        type="button"
+        class="cell"
+        data-testid="cell-3"
+        aria-label="cell 4"
+      ></button>
+      <button
+        type="button"
+        class="cell"
+        data-testid="cell-4"
+        aria-label="cell 5"
+      ></button>
+      <button
+        type="button"
+        class="cell"
+        data-testid="cell-5"
+        aria-label="cell 6"
+      ></button>
+      <button
+        type="button"
+        class="cell"
+        data-testid="cell-6"
+        aria-label="cell 7"
+      ></button>
+      <button
+        type="button"
+        class="cell"
+        data-testid="cell-7"
+        aria-label="cell 8"
+      ></button>
+      <button
+        type="button"
+        class="cell"
+        data-testid="cell-8"
+        aria-label="cell 9"
+      ></button>
+    </div>
+    <p class="status" data-testid="status" aria-live="polite"></p>
+    <button type="button" class="reset" data-testid="reset">New game</button>
+    <p class="version">
+      build <span data-testid="build-version">__BUILD_VERSION__</span>
+    </p>
+    <script>
+      const LINES = [
+        [0, 1, 2],
+        [3, 4, 5],
+        [6, 7, 8],
+        [0, 3, 6],
+        [1, 4, 7],
+        [2, 5, 8],
+        [0, 4, 8],
+        [2, 4, 6],
+      ];
+      const cells = Array.from(document.querySelectorAll(".cell"));
+      const status = document.querySelector('[data-testid="status"]');
+      let board;
+      let player;
+      let over;
+
+      function winner() {
+        for (const [a, b, c] of LINES) {
+          if (board[a] && board[a] === board[b] && board[a] === board[c])
+            return board[a];
+        }
+        return null;
+      }
+
+      function render() {
+        cells.forEach((cell, i) => {
+          cell.textContent = board[i] || "";
+          cell.disabled = over || Boolean(board[i]);
+        });
+        const w = winner();
+        if (w) status.textContent = `${w} wins`;
+        else if (over) status.textContent = "Draw";
+        else status.textContent = `${player} to move`;
+      }
+
+      function play(i) {
+        if (over || board[i]) return;
+        board[i] = player;
+        over = Boolean(winner()) || board.every(Boolean);
+        player = player === "X" ? "O" : "X";
+        render();
+      }
+
+      function reset() {
+        board = Array(9).fill(null);
+        player = "X";
+        over = false;
+        render();
+      }
+
+      cells.forEach((cell, i) => cell.addEventListener("click", () => play(i)));
+      document
+        .querySelector('[data-testid="reset"]')
+        .addEventListener("click", reset);
+      reset();
+    </script>
+  </body>
+</html>

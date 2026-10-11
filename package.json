@@ -1,0 +1,43 @@
+{
+  "name": "tictactoe",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Single-page tic-tac-toe with a CircleCI pipeline deploying to S3 and CloudFront.",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "lint": "yarn lint:html && yarn lint:gherkin",
+    "lint:html": "html-validate app/index.html",
+    "lint:gherkin": "gherkin-lint cypress/e2e",
+    "typecheck": "tsc -p tsconfig.json",
+    "build:staging": "scripts/ci/build.sh staging",
+    "build:production": "scripts/ci/build.sh production",
+    "serve:staging": "serve dist/staging --listen 4173 --no-clipboard",
+    "serve:production": "serve dist/production --listen 4173 --no-clipboard",
+    "cy:open": "cypress open --e2e --expose tags=@uat,ENV_NAME=staging",
+    "cdk": "cdk",
+    "cy:uat:staging": "scripts/ci/run-uat.sh staging",
+    "cy:uat:production": "scripts/ci/run-uat.sh production"
+  },
+  "cypress-cucumber-preprocessor": {
+    "stepDefinitions": "cypress/support/step_definitions/**/*.ts",
+    "filterSpecs": true,
+    "omitFiltered": true
+  },
+  "devDependencies": {
+    "@badeball/cypress-cucumber-preprocessor": "^28.0.1",
+    "@bahmutov/cypress-esbuild-preprocessor": "^2.2.8",
+    "@types/node": "^24",
+    "aws-cdk": "^2.1145.0",
+    "aws-cdk-lib": "^2.273.0",
+    "constructs": "^10.8.1",
+    "cypress": "^16.1.1",
+    "esbuild": "^0.28.2",
+    "gherkin-lint": "^4.2.4",
+    "html-validate": "^11.16.2",
+    "serve": "^14.2.6",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  }
+}
