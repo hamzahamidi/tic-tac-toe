@@ -1,0 +1,88 @@
+name: uat
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        type: string
+        required: true
+      is_release:
+        type: boolean
+        default: false
+  workflow_dispatch:
+    inputs:
+      environment:
+        type: choice
+        options: [staging, production]
+        default: staging
+      is_release:
+        description: Upload UAT evidence to S3
+        type: boolean
+        default: false
+  push:
+    branches: ["uat/**"]
+
+permissions:
+  contents: read
+  id-token: write
+  checks: write
+
+concurrency:
+  group: uat-${{ inputs.environment || 'staging' }}
+  cancel-in-progress: false
+
+jobs:
+  uat:
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    container:
+      image: cypress/browsers:node-24.21.0-chrome-153.0.8010.36-1-ff-156.0-edge-153.0.4234.32-1
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2]
+    env:
+      TARGET_ENV: ${{ inputs.environment || 'staging' }}
+      SHARD_TOTAL: "3"
+      CYPRESS_BROWSER: chrome
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - run: scripts/ci/install-aws-cli.sh
+      - uses: aws-actions/configure-aws-credentials@v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: eu-west-1
+      - uses: actions/cache@v5.1.0
+        with:
+          path: ~/.cache/Cypress
+          key: cypress-binary-${{ hashFiles('yarn.lock') }}
+      - run: yarn install --frozen-lockfile
+      - name: Cypress UAT against ${{ env.TARGET_ENV }}
+        run: |
+          specs="$(find cypress/e2e -name '*.feature' | sort \
+            | awk -v n="$SHARD_TOTAL" -v i="${{ matrix.shard }}" '(NR - 1) % n == i' \
+            | paste -sd, -)"
+          echo "This shard runs: ${specs:-<none>}"
+          if [ -z "$specs" ]; then exit 0; fi
+          scripts/ci/run-uat.sh "$TARGET_ENV" "$specs"
+      - name: Upload evidence to S3
+        if: always()
+        env:
+          IS_RELEASE: ${{ inputs.is_release }}
+          EVIDENCE_BUCKET: ${{ vars.EVIDENCE_BUCKET }}
+          PIPELINE_ID: ${{ github.run_id }}
+          SHARD_INDEX: ${{ matrix.shard }}
+        run: scripts/ci/upload-evidence.sh "$TARGET_ENV"
+      - uses: mikepenz/action-junit-report@v6.5.0
+        if: always()
+        with:
+          report_paths: cypress/results/*.xml
+          check_name: uat ${{ env.TARGET_ENV }} (shard ${{ matrix.shard }})
+      - uses: actions/upload-artifact@v7.0.1
+        if: always()
+        with:
+          name: cypress-${{ env.TARGET_ENV }}-shard-${{ matrix.shard }}
+          path: |
+            cypress/results
+            cypress/videos
+            cypress/screenshots
+          if-no-files-found: ignore
