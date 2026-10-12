@@ -1,0 +1,110 @@
+common:
+  - &aws
+    aws-assume-role-with-web-identity#v1.7.0:
+      role-arn: arn:aws:iam::394339413944:role/circleci-tictactoe
+      region: eu-west-1
+  - &dist
+    artifacts#v1.9.4:
+      download: dist/**/*
+  - &node
+    docker#v5.14.0:
+      image: node:24.21
+      propagate-aws-auth-tokens: true
+      environment:
+        - AWS_REGION
+        - AWS_DEFAULT_REGION
+        - CYPRESS_INSTALL_BINARY=0
+
+steps:
+  - label: ":eslint: check"
+    key: check
+    command: yarn install --frozen-lockfile && yarn lint && yarn typecheck
+    plugins:
+      - *node
+
+  - label: ":package: build"
+    key: build
+    command: scripts/ci/build.sh staging && scripts/ci/build.sh production
+    env:
+      BUILD_NUMBER: "${BUILDKITE_BUILD_NUMBER}"
+    artifact_paths: dist/**/*
+
+  - label: ":cloudformation: infra-check"
+    key: infra-check
+    depends_on: build
+    command: yarn install --frozen-lockfile && npx cdk synth --quiet
+    plugins:
+      - *dist
+      - *node
+
+  - label: ":mag: preview staging"
+    key: preview-staging
+    depends_on: build
+    command: yarn install --frozen-lockfile && scripts/ci/preview.sh staging
+    plugins:
+      - *aws
+      - *dist
+      - *node
+
+  - label: ":rocket: deploy staging"
+    key: deploy-staging
+    depends_on: [check, infra-check, preview-staging]
+    if: build.branch == "main"
+    concurrency: 1
+    concurrency_group: tic-tac-toe/deploy-staging
+    command: yarn install --frozen-lockfile && scripts/ci/deploy.sh staging
+    plugins:
+      - *aws
+      - *dist
+      - *node
+
+  - label: ":cypress: e2e staging"
+    key: e2e-staging
+    depends_on: deploy-staging
+    if: build.branch == "main"
+    trigger: tic-tac-toe-uat
+    build:
+      commit: "${BUILDKITE_COMMIT}"
+      branch: "${BUILDKITE_BRANCH}"
+      env:
+        E2E_TARGET_ENVIRONMENT: staging
+        IS_RELEASE: "${IS_RELEASE:-false}"
+
+  - label: ":mag: preview production"
+    key: preview-production
+    depends_on: deploy-staging
+    if: build.branch == "main"
+    command: yarn install --frozen-lockfile && scripts/ci/preview.sh production
+    plugins:
+      - *aws
+      - *dist
+      - *node
+
+  - block: ":shipit: approve production"
+    key: approve-production
+    depends_on: [e2e-staging, preview-production]
+    if: build.branch == "main"
+
+  - label: ":rocket: deploy production"
+    key: deploy-production
+    depends_on: approve-production
+    if: build.branch == "main"
+    concurrency: 1
+    concurrency_group: tic-tac-toe/deploy-production
+    command: yarn install --frozen-lockfile && scripts/ci/deploy.sh production
+    plugins:
+      - *aws
+      - *dist
+      - *node
+
+  - label: ":cypress: e2e production"
+    key: e2e-production
+    depends_on: deploy-production
+    if: build.branch == "main"
+    trigger: tic-tac-toe-uat
+    build:
+      commit: "${BUILDKITE_COMMIT}"
+      branch: "${BUILDKITE_BRANCH}"
+      env:
+        E2E_TARGET_ENVIRONMENT: production
+        IS_RELEASE: "${IS_RELEASE:-false}"

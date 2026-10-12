@@ -1,0 +1,41 @@
+steps:
+  - label: ":cypress: UAT against ${E2E_TARGET_ENVIRONMENT:-staging}"
+    key: uat
+    parallelism: 3
+    # Concurrency counts each parallel job, so 3 lets one build's shards run together.
+    concurrency: 3
+    concurrency_group: tic-tac-toe/uat-${E2E_TARGET_ENVIRONMENT:-staging}
+    command: |
+      scripts/ci/install-aws-cli.sh
+      yarn install --frozen-lockfile
+      specs="$$(find cypress/e2e -name '*.feature' | sort \
+        | awk -v n="$$BUILDKITE_PARALLEL_JOB_COUNT" -v i="$$BUILDKITE_PARALLEL_JOB" '(NR - 1) % n == i' \
+        | paste -sd, -)"
+      echo "This job runs: $${specs:-<none>}"
+      status=0
+      if [ -n "$$specs" ]; then
+        scripts/ci/run-uat.sh ${E2E_TARGET_ENVIRONMENT:-staging} "$$specs" || status=$$?
+      fi
+      PIPELINE_ID="$$BUILDKITE_BUILD_ID" SHARD_INDEX="$$BUILDKITE_PARALLEL_JOB" \
+        scripts/ci/upload-evidence.sh ${E2E_TARGET_ENVIRONMENT:-staging} || status=$$?
+      exit $$status
+    artifact_paths:
+      - cypress/results/**/*
+      - cypress/videos/**/*
+      - cypress/screenshots/**/*
+    plugins:
+      - aws-assume-role-with-web-identity#v1.7.0:
+          role-arn: arn:aws:iam::394339413944:role/circleci-tictactoe
+          region: eu-west-1
+      - docker#v5.14.0:
+          image: cypress/browsers:node-24.21.0-chrome-153.0.8010.36-1-ff-156.0-edge-153.0.4234.32-1
+          propagate-aws-auth-tokens: true
+          environment:
+            - AWS_REGION
+            - AWS_DEFAULT_REGION
+            - BUILDKITE_BUILD_ID
+            - BUILDKITE_PARALLEL_JOB
+            - BUILDKITE_PARALLEL_JOB_COUNT
+            - EVIDENCE_BUCKET
+            - IS_RELEASE
+            - CYPRESS_BROWSER=chrome
