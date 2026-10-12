@@ -33,7 +33,7 @@ concurrency:
 
 jobs:
   uat:
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: namespace-profile-first
     container:
       image: cypress/browsers:node-24.21.0-chrome-153.0.8010.36-1-ff-156.0-edge-153.0.4234.32-1
     strategy:

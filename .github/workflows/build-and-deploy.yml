@@ -18,7 +18,7 @@ env:
 
 jobs:
   check:
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: namespace-profile-first
     env:
       CYPRESS_INSTALL_BINARY: "0"
     steps:
@@ -32,7 +32,7 @@ jobs:
       - run: yarn typecheck
 
   build:
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: namespace-profile-first
     env:
       BUILD_NUMBER: ${{ github.run_number }}
     steps:
@@ -46,7 +46,7 @@ jobs:
 
   infra-check:
     needs: build
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: namespace-profile-first
     env:
       CYPRESS_INSTALL_BINARY: "0"
     steps:
@@ -64,7 +64,7 @@ jobs:
 
   preview-staging:
     needs: build
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: namespace-profile-first
     permissions:
       contents: read
       id-token: write
@@ -90,7 +90,7 @@ jobs:
   deploy-staging:
     needs: [check, infra-check, preview-staging]
     if: github.ref == 'refs/heads/main'
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: namespace-profile-first
     environment: staging
     concurrency:
       group: deploy-staging
@@ -130,7 +130,7 @@ jobs:
 
   preview-production:
     needs: deploy-staging
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: namespace-profile-first
     permissions:
       contents: read
       id-token: write
@@ -156,7 +156,7 @@ jobs:
   # The production environment's required reviewers are the approval gate.
   deploy-production:
     needs: [e2e-staging, preview-production]
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: namespace-profile-first
     environment: production
     concurrency:
       group: deploy-production
