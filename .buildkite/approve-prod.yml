@@ -2,6 +2,9 @@ steps:
   - block: ":shipit: deploy build ${BUILDKITE_TRIGGERED_FROM_BUILD_NUMBER:-?} to production?"
     prompt: Staging is frozen on this build until you approve or cancel. Cancel this build to reject.
     key: approval
+    # The default, passed, reports a blocked build as passed, so the parent's
+    # trigger step would continue without waiting for the approval.
+    blocked_state: running
 
   - label: ":white_check_mark: approved"
     depends_on: approval
