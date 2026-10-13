@@ -46,12 +46,25 @@ steps:
       - *dist
       - *node
 
-  - label: ":rocket: deploy staging"
-    key: deploy-staging
+  # Staging gate: one build at a time holds staging from deploy until the
+  # production approval. The closing step is created with the build and waits
+  # ahead of later builds in the ordered concurrency queue, which is what holds
+  # the lock. A block step would delay its creation and break the gate, so the
+  # approval lives in a triggered child pipeline instead.
+  - label: ":lock: staging gate open"
+    key: staging-gate-open
     depends_on: [check, infra-check, preview-staging]
     if: build.branch == "main"
     concurrency: 1
-    concurrency_group: tic-tac-toe/deploy-staging
+    concurrency_group: tic-tac-toe/staging-gate
+    command: echo "Build $$BUILDKITE_BUILD_NUMBER holds the staging gate"
+
+  - wait
+
+  - label: ":rocket: deploy staging"
+    key: deploy-staging
+    depends_on: staging-gate-open
+    if: build.branch == "main"
     command: yarn install --frozen-lockfile && scripts/ci/deploy.sh staging
     plugins:
       - *aws
@@ -80,14 +93,30 @@ steps:
       - *dist
       - *node
 
-  - block: ":shipit: approve production"
+  - label: ":shipit: approve production"
     key: approve-production
     depends_on: [e2e-staging, preview-production]
     if: build.branch == "main"
+    trigger: tic-tac-toe-approve-prod
+    build:
+      commit: "${BUILDKITE_COMMIT}"
+      branch: "${BUILDKITE_BRANCH}"
+
+  # Releases the gate even when the approval is cancelled or a staging step failed.
+  - wait: ~
+    continue_on_failure: true
+    if: build.branch == "main"
+
+  - label: ":unlock: staging gate close"
+    key: staging-gate-close
+    if: build.branch == "main"
+    concurrency: 1
+    concurrency_group: tic-tac-toe/staging-gate
+    command: echo "Build $$BUILDKITE_BUILD_NUMBER releases the staging gate"
 
   - label: ":rocket: deploy production"
     key: deploy-production
-    depends_on: approve-production
+    depends_on: [approve-production, staging-gate-close]
     if: build.branch == "main"
     concurrency: 1
     concurrency_group: tic-tac-toe/deploy-production

@@ -1,0 +1,8 @@
+steps:
+  - block: ":shipit: deploy build ${BUILDKITE_TRIGGERED_FROM_BUILD_NUMBER:-?} to production?"
+    prompt: Staging is frozen on this build until you approve or cancel. Cancel this build to reject.
+    key: approval
+
+  - label: ":white_check_mark: approved"
+    depends_on: approval
+    command: echo "Production deploy approved for build $${BUILDKITE_TRIGGERED_FROM_BUILD_NUMBER:-?}"
